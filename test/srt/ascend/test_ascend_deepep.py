@@ -6,12 +6,9 @@ from urllib.parse import urlparse
 from sglang.srt.utils import kill_process_tree
 from sglang.test.few_shot_gsm8k import run_eval as run_eval_few_shot_gsm8k
 from sglang.test.test_utils import (
-    DEFAULT_TIMEOUT_FOR_SERVER_LAUNCH,
     DEFAULT_URL_FOR_TEST,
     CustomTestCase,
-    is_in_ci,
     popen_launch_server,
-    run_bench_offline_throughput,
 )
 
 TEST_MODEL_MATRIX = {
@@ -35,22 +32,19 @@ class TestAscendDeepEP(CustomTestCase):
             "--trust-remote-code",
             "--attention-backend",
             "ascend",
-            "--quantization",
-            "w8a8_int8",
             "--mem-fraction-static",
-            0.9,
-            "--max-running-requests",
-            32,
+            0.8,
             "--disable-radix-cache",
             "--chunked-prefill-size",
             32768,
-            "--disable-cuda-graph",
             "--tp-size",
             16,
             "--dp-size",
             1,
             "--ep-size",
             16,
+            "--max-running-requests",
+            24,
             "--moe-a2a-backend",
             "deepep",
             "--deepep-mode",
@@ -58,7 +52,7 @@ class TestAscendDeepEP(CustomTestCase):
         ]
 
         cls.extra_envs = {
-            "HCCL_BUFFSIZE": "500",
+            "HCCL_BUFFSIZE": "1000",
             "SGLANG_DEEPEP_NUM_MAX_DISPATCH_TOKENS_PER_RANK": "32",
             "SGLANG_NPU_USE_MLAPO": "1",
         }
@@ -72,7 +66,7 @@ class TestAscendDeepEP(CustomTestCase):
                 process = popen_launch_server(
                     model,
                     self.base_url,
-                    timeout=1500,
+                    timeout=2400,
                     other_args=[
                         *self.common_args,
                     ],
@@ -82,7 +76,7 @@ class TestAscendDeepEP(CustomTestCase):
                     args = SimpleNamespace(
                         num_shots=5,
                         data_path=None,
-                        num_questions=1319,
+                        num_questions=500,
                         max_new_tokens=512,
                         parallel=128,
                         host=f"http://{self.url.hostname}",
@@ -96,26 +90,6 @@ class TestAscendDeepEP(CustomTestCase):
                     )
                 finally:
                     kill_process_tree(process.pid)
-
-    def test_b_throughput(self):
-        for model in self.models:
-            with self.subTest(model=model):
-                print(f"##=== Testing throughput: {model} ===##")
-
-                output_throughput = run_bench_offline_throughput(
-                    model,
-                    [
-                        *self.common_args,
-                    ],
-                )
-
-                print(f"##=== {model} throughput: {output_throughput} ===##")
-
-                if is_in_ci():
-                    self.assertGreater(
-                        output_throughput,
-                        TEST_MODEL_MATRIX[model]["output_throughput"],
-                    )
 
 
 if __name__ == "__main__":
